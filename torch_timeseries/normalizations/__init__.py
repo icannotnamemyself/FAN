@@ -18,7 +18,14 @@ from .PeriodFDV3 import PeriodFDV3
 from .PeriodFDV4 import PeriodFDV4
 from .PeriodFDV5 import PeriodFDV5
 from .FAN import FAN
-from .FANCP import FANCP
+from .FANCP1 import FANCP1
+from .FANNO import FANNO
+from .FANRON import FANRON
+from .FANGRU import FANGRU
+from .FAN3MLP import FAN3MLP
+from .FANMixer import FANMixer
+
+
 __all__ = [
     'DishTS',
     'No',
@@ -38,7 +45,12 @@ __all__ = [
     'PeriodFDV4',
     'PeriodFDV5',
     'FAN',
-    'FANCP',
+    'FANCP1',
+    'FANNO',
+    'FANRON',
+    'FANGRU',
+    'FAN3MLP',
+    'FANMixer',
 ]
 
 # def _parse_type(str_or_type: Union[Type, str]) -> Type:

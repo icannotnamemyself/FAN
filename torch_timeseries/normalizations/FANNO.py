@@ -53,7 +53,7 @@ def frl(x, k):
     # k: hyper parameter selecting k largest magnitude frequencies
     
     # applying fourier transform to each series O(Llog(L))
-    z = torch.fft.rfft(x, dim=2)
+    z = torch.fft.rfft(x, dim=1)
     
     # find top k indices O(L + k)
     ks = torch.topk(z.abs(), k, dim = 1)  
@@ -65,7 +65,7 @@ def frl(x, k):
     z_m = z * mask
 
     # applying inverse fourier transform to each fourier series O(Llog(L))
-    x_m = torch.fft.irfft(z_m, dim=2).real
+    x_m = torch.fft.irfft(z_m, dim=1).real
     x_n = x - x_m
     return x_n
 
@@ -107,14 +107,14 @@ def high_freq_part(x, k):
     return norm_input, x_filtered
 
 
-class FAN(nn.Module):
+class FANNO(nn.Module):
     """FAN first substract bottom k frequecy component from the original series
       
 
     Args:
         nn (_type_): _description_
     """
-    def __init__(self,  seq_len, pred_len, enc_in, freq_topk = 20, rfft=True):
+    def __init__(self,  seq_len, pred_len, enc_in, freq_topk = 20, period_len=12 , SAN=False, rfft=True):
         super().__init__()
         self.seq_len = seq_len
         self.pred_len = pred_len
@@ -122,22 +122,25 @@ class FAN(nn.Module):
         self.epsilon = 1e-8
         self.freq_topk = freq_topk
         print("freq_topk : ", self.freq_topk )
+        self.period_len = period_len
+        self.SAN = SAN
         self.rfft = rfft
         
+        self.seq_len_new = int(self.seq_len / self.period_len)
+        self.pred_len_new = int(self.pred_len / self.period_len)
+        
+
         self._build_model()
         self.weight = nn.Parameter(torch.ones(2, self.enc_in))
         
     def _build_model(self):
-        self.model_freq = MLPfreq(seq_len=self.seq_len, pred_len=self.pred_len, enc_in=self.enc_in)
+        return
+        # self.model_freq = MLPfreq(seq_len=self.seq_len, pred_len=self.pred_len, enc_in=self.enc_in)
         
     def loss(self, true):
         # freq normalization
         B , O, N= true.shape
-        residual, pred_main  = main_freq_part(true, self.freq_topk, self.rfft)
-        
-
-        lf = nn.functional.mse_loss
-        return  lf(self.pred_main_freq_signal, pred_main) + lf(residual, self.pred_residual) 
+        return  0
         
         
     def normalize(self, input):
@@ -146,12 +149,31 @@ class FAN(nn.Module):
         # freq normalization
         # input = norm_input.reshape(bs, len, dim)
         norm_input, x_filtered = main_freq_part(input, self.freq_topk, self.rfft)
-        # freq prediction
-        # seq_last = x_filtered[:, -1: , :].detach()
-        # self.pred_main_freq_signal = self.model_freq((x_filtered - seq_last).transpose(1,2)).transpose(1,2) + seq_last # B O N
-        # self.pred_main_freq_signal = self.model_freq((x_filtered).transpose(1,2)).transpose(1,2)  # B O N
         
-        self.pred_main_freq_signal = self.model_freq(x_filtered.transpose(1,2), input.transpose(1,2)).transpose(1,2)
+        
+        # self.model_freq(x_filtered.transpose(1,2), input.transpose(1,2)).transpose(1,2)
+        
+        if not self.SAN:
+            return norm_input.reshape(bs, len, dim)
+        
+        input = norm_input
+        # x_norm = norm_input
+
+        # trend normalize
+        input = input.reshape(bs, -1, self.period_len, dim)
+        mean = torch.mean(input, dim=-2, keepdim=True)
+        std = torch.std(input, dim=-2, keepdim=True)
+        norm_input = (input - mean) / (std + self.epsilon)
+        input = input.reshape(bs, len, dim)
+        
+        # statistic prediction
+        mean_all = torch.mean(input, dim=1, keepdim=True)
+        self.preds_mean = self.model(mean.squeeze(2) - mean_all, input - mean_all) * self.weight[0] + mean_all * \
+                        self.weight[1]
+        self.preds_mean = self.preds_mean[:, -self.pred_len_new:, :]
+        self.preds_std = self.model_std(std.squeeze(2), input)
+        self.preds_std = self.preds_std[:, -self.pred_len_new:, :]
+        
         
         return norm_input.reshape(bs, len, dim)
 
@@ -160,9 +182,8 @@ class FAN(nn.Module):
         # input:  (B, O, N)
         # station_pred: outputs of normalize
         bs, len, dim = input_norm.shape
-        # freq denormalize
         self.pred_residual = input_norm
-        output = self.pred_residual + self.pred_main_freq_signal
+        output = self.pred_residual #+ self.pred_main_freq_signal
         
         return output.reshape(bs, len, dim)
     
@@ -198,3 +219,29 @@ class MLPfreq(nn.Module):
         
         
         
+
+class MLP(nn.Module):
+    def __init__(self, seq_len, pred_len, enc_in, period_len, mode):
+        super(MLP, self).__init__()
+        self.seq_len = seq_len
+        self.pred_len = pred_len
+        self.channels = enc_in
+        self.period_len = period_len
+        self.mode = mode
+        if mode == 'std':
+            self.final_activation = nn.ReLU()
+        else:
+            self.final_activation = nn.Identity()
+        self.input = nn.Linear(self.seq_len, 512)
+        self.input_raw = nn.Linear(self.seq_len * self.period_len, 512)
+        self.activation = nn.ReLU() if mode == 'std' else nn.Tanh()
+        self.output = nn.Linear(1024, self.pred_len)
+
+    def forward(self, x, x_raw):
+        x, x_raw = x.permute(0, 2, 1), x_raw.permute(0, 2, 1)
+        x = self.input(x)
+        x_raw = self.input_raw(x_raw)
+        x = torch.cat([x, x_raw], dim=-1)
+        x = self.output(self.activation(x))
+        x = self.final_activation(x)
+        return x.permute(0, 2, 1)

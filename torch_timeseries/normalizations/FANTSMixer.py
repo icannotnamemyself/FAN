@@ -53,7 +53,7 @@ def frl(x, k):
     # k: hyper parameter selecting k largest magnitude frequencies
     
     # applying fourier transform to each series O(Llog(L))
-    z = torch.fft.rfft(x, dim=1)
+    z = torch.fft.rfft(x, dim=2)
     
     # find top k indices O(L + k)
     ks = torch.topk(z.abs(), k, dim = 1)  
@@ -65,7 +65,7 @@ def frl(x, k):
     z_m = z * mask
 
     # applying inverse fourier transform to each fourier series O(Llog(L))
-    x_m = torch.fft.irfft(z_m, dim=1).real
+    x_m = torch.fft.irfft(z_m, dim=2).real
     x_n = x - x_m
     return x_n
 
@@ -107,7 +107,7 @@ def high_freq_part(x, k):
     return norm_input, x_filtered
 
 
-class FANCP(nn.Module):
+class FAN(nn.Module):
     """FAN first substract bottom k frequecy component from the original series
       
 
@@ -134,12 +134,29 @@ class FANCP(nn.Module):
         self.weight = nn.Parameter(torch.ones(2, self.enc_in))
         
     def _build_model(self):
+        if self.SAN:
+            seq_len = self.seq_len // self.period_len
+            enc_in = self.enc_in
+            pred_len = self.pred_len_new
+            self.model = MLP(seq_len, pred_len, enc_in, self.period_len, mode='mean').float()
+            self.model_std = MLP( seq_len, pred_len, enc_in, self.period_len, mode='std').float()
+        
         self.model_freq = MLPfreq(seq_len=self.seq_len, pred_len=self.pred_len, enc_in=self.enc_in)
         
     def loss(self, true):
         # freq normalization
         B , O, N= true.shape
-        return  0
+        residual, pred_main  = main_freq_part(true, self.freq_topk, self.rfft)
+        
+
+        lf = nn.functional.mse_loss
+        
+        if not self.SAN:
+            return  lf(self.pred_main_freq_signal, pred_main) + lf(residual, self.pred_residual) 
+        mean = self.preds_mean
+        std = self.preds_std
+        sliced_true = residual.reshape(B, -1, 12, N)
+        return  lf(mean, sliced_true.mean(2)) + lf(std, sliced_true.std(2)) + lf(self.pred_main_freq_signal, pred_main) + lf(residual, self.pred_residual) 
         
         
     def normalize(self, input):
@@ -148,10 +165,12 @@ class FANCP(nn.Module):
         # freq normalization
         # input = norm_input.reshape(bs, len, dim)
         norm_input, x_filtered = main_freq_part(input, self.freq_topk, self.rfft)
+        # freq prediction
+        # seq_last = x_filtered[:, -1: , :].detach()
+        # self.pred_main_freq_signal = self.model_freq((x_filtered - seq_last).transpose(1,2)).transpose(1,2) + seq_last # B O N
+        # self.pred_main_freq_signal = self.model_freq((x_filtered).transpose(1,2)).transpose(1,2)  # B O N
         
-        self.pred_main_freq_signal = x_filtered.repeat_interleave( int((self.pred_len)/self.seq_len) + 2, dim=1)[:, self.seq_len:self.seq_len+self.pred_len, :]
-        
-        # self.model_freq(x_filtered.transpose(1,2), input.transpose(1,2)).transpose(1,2)
+        self.pred_main_freq_signal = self.model_freq(x_filtered.transpose(1,2), input.transpose(1,2)).transpose(1,2)
         
         if not self.SAN:
             return norm_input.reshape(bs, len, dim)
@@ -182,6 +201,13 @@ class FANCP(nn.Module):
         # input:  (B, O, N)
         # station_pred: outputs of normalize
         bs, len, dim = input_norm.shape
+        if self.SAN:
+            # trend denormalize
+            input = input_norm.reshape(bs, -1, self.period_len, dim)
+            output = input * (self.preds_std.unsqueeze(2)+ self.epsilon) + self.preds_mean.unsqueeze(2)
+            output = output.reshape(bs, len, dim)
+            input_norm = output
+        # freq denormalize
         self.pred_residual = input_norm
         output = self.pred_residual + self.pred_main_freq_signal
         

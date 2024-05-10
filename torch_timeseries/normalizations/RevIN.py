@@ -18,6 +18,9 @@ class RevIN(nn.Module):
         batch_x = self.forward_process(batch_x)
         dec_inp = None if dec_inp is None else self.forward_process(dec_inp)
         return batch_x, dec_inp
+    
+    def loss(self, true):
+        return 0
 
     def denormalize(self, batch_x):
         # batch_x: B*H*D (forecasts)

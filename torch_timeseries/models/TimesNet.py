@@ -113,11 +113,11 @@ class TimesNet(nn.Module):
 
     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
         # Normalization from Non-stationary Transformer
-        means = x_enc.mean(1, keepdim=True).detach()
-        x_enc = x_enc - means
-        stdev = torch.sqrt(
-            torch.var(x_enc, dim=1, keepdim=True, unbiased=False) + 1e-5)
-        x_enc /= stdev
+        # means = x_enc.mean(1, keepdim=True).detach()
+        # x_enc = x_enc - means
+        # stdev = torch.sqrt(
+        #     torch.var(x_enc, dim=1, keepdim=True, unbiased=False) + 1e-5)
+        # x_enc /= stdev
 
         # embedding
         enc_out = self.enc_embedding(x_enc, x_mark_enc)  # [B,T,C]
@@ -130,12 +130,12 @@ class TimesNet(nn.Module):
         dec_out = self.projection(enc_out)
 
         # De-Normalization from Non-stationary Transformer
-        dec_out = dec_out * \
-                  (stdev[:, 0, :].unsqueeze(1).repeat(
-                      1, self.pred_len + self.seq_len, 1))
-        dec_out = dec_out + \
-                  (means[:, 0, :].unsqueeze(1).repeat(
-                      1, self.pred_len + self.seq_len, 1))
+        # dec_out = dec_out * \
+        #           (stdev[:, 0, :].unsqueeze(1).repeat(
+        #               1, self.pred_len + self.seq_len, 1))
+        # dec_out = dec_out + \
+        #           (means[:, 0, :].unsqueeze(1).repeat(
+        #               1, self.pred_len + self.seq_len, 1))
         return dec_out
 
     def imputation(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask):

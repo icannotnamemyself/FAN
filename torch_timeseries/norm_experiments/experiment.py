@@ -584,6 +584,7 @@ class NormExperiment(Settings):
             self.model.train()
             # self.n_model.train()
             # import pdb;pdb.set_trace()
+            times = []
             train_loss = []
             for i, (
                 batch_x,
@@ -599,6 +600,7 @@ class NormExperiment(Settings):
                 batch_y = batch_y.to(self.device, dtype=torch.float32)
                 batch_x_date_enc = batch_x_date_enc.to(self.device).float()
                 batch_y_date_enc = batch_y_date_enc.to(self.device).float()
+                start = time.time()
 
                 pred, true = self._process_batch(
                     batch_x, batch_y, batch_x_date_enc, batch_y_date_enc
@@ -625,7 +627,7 @@ class NormExperiment(Settings):
                     sliced_true = true.reshape(bs, -1, 12, self.dataset.num_features)
                     loss = self.loss_func(pred, true) + self.loss_func(mean, sliced_true.mean(2)) + self.loss_func(std, sliced_true.std(2))
                     
-                elif isinstance(self.model.nm, PeriodFDV4) or  isinstance(self.model.nm, PeriodFDV5) or isinstance(self.model.nm, FAN):
+                elif isinstance(self.model.nm, PeriodFDV4) or  isinstance(self.model.nm, PeriodFDV5) or isinstance(self.model.nm, FAN) or isinstance(self.model.nm, FANRON):
                     loss = self.loss_func(pred, true) + self.model.nm.loss(true)
 
                 elif  isinstance(self.model.nm, PeriodFDV3):
@@ -675,7 +677,7 @@ class NormExperiment(Settings):
                         # kl_divergence_gaussian(mean, self.model.nm., , ,sigma_true.reshape(-1, ))
                 
                 else:
-                    loss = self.loss_func(pred, true)
+                    loss = self.loss_func(pred, true)+ self.model.nm.loss(true)
 
                 
                 loss.backward()
@@ -693,6 +695,15 @@ class NormExperiment(Settings):
                 )
 
                 self.model_optim.step()
+                
+                
+                end = time.time()
+                
+                
+                times.append(end-start)
+                
+            print("average iter: {}ms", np.mean(times)*1000)
+                
             return train_loss
     def _check_run_exist(self, seed: str):
         if not os.path.exists(self.run_save_dir):
