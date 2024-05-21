@@ -280,6 +280,19 @@ class NormExperiment(Settings):
         print(f"val steps: {self.val_steps}")
         print(f"test steps: {self.test_steps}")
 
+    def _init_sep_optimizer(self):
+        self.n_model_optim = Adam(
+            self.model.nm.parameters(), lr=self.lr, weight_decay=self.l2_weight_decay
+        )
+        
+        self.f_model_optim = Adam(
+            self.model.fm.parameters(), lr=self.lr, weight_decay=self.l2_weight_decay
+        )
+
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            self.f_model_optim, T_max=self.epochs
+        )
+
     def _init_optimizer(self):
         self.model_optim = Adam(
             self.model.parameters(), lr=self.lr, weight_decay=self.l2_weight_decay
@@ -287,10 +300,6 @@ class NormExperiment(Settings):
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             self.model_optim, T_max=self.epochs
         )
-        # if not isinstance(self.n_model, No):
-        #     self.norm_model_optim = Adam(
-        #         self.n_model.parameters(), lr=self.lr, weight_decay=self.l2_weight_decay
-        #     )
 
     def _init_n_model(self):
         print(f"using {self.norm_type} as normalization model., config: {self.norm_config}")
@@ -301,10 +310,6 @@ class NormExperiment(Settings):
             self.n_model : torch.nn.Module = Ty(self.windows, self.pred_len, 12, self.dataset.num_features, **self.norm_config)
         elif self.norm_type == 'DishTS':
             self.n_model : torch.nn.Module = Ty(self.dataset.num_features, self.windows, **self.norm_config)
-        elif self.norm_type == 'CovidsV1':
-            self.n_model : torch.nn.Module = Ty(self.windows, self.pred_len, self.dataset.num_features, **self.norm_config)
-        elif self.norm_type == 'SNv1':
-            self.n_model : torch.nn.Module = Ty(self.windows, self.pred_len, self.dataset.num_features, **self.norm_config)
         elif self.norm_type == 'No':
             self.n_model : torch.nn.Module = No(**self.norm_config)
         else:
@@ -321,9 +326,12 @@ class NormExperiment(Settings):
         # self.model = self._parse_type(self.model_type)().to(self.device)
         self.model =   Model(self.model_type, self.f_model,self.n_model).to(self.device)
 
-
+    def is_sep_loss(self):
+        print("seploss", "seploss" in self.norm_config  and self.norm_config['seploss'] == True)
+        return "seploss" in self.norm_config  and self.norm_config['seploss'] == True
 
     def _setup(self):
+        
         # init data loader
         self._init_data_loader()
 
@@ -352,8 +360,10 @@ class NormExperiment(Settings):
         
         self._init_model()
 
-
-        self._init_optimizer()
+        if self.is_sep_loss():
+            self._init_sep_optimizer()
+        else:
+            self._init_optimizer()
         self.current_epoch = 0
         self.run_save_dir = os.path.join(
             self.save_dir,
@@ -414,6 +424,31 @@ class NormExperiment(Settings):
         # now only save the newest state
         torch.save(self.app_state, f"{self.checkpoint_filepath}")
 
+    def get_run_state(self):
+        if self.is_sep_loss():
+            run_state = {
+                # "n_model": self.n_model.state_dict(),
+                # "norm_model_optim": self.norm_model_optim.state_dict(),
+                "model": self.model.state_dict(),
+                "current_epoch": self.current_epoch,
+                "n_optimizer": self.n_model_optim.state_dict(),
+                "f_optimizer": self.f_model_optim.state_dict(),
+                "rng_state": torch.get_rng_state(),
+                "early_stopping": self.early_stopper.get_state(),
+            }
+            
+        else:
+            run_state = {
+                # "n_model": self.n_model.state_dict(),
+                # "norm_model_optim": self.norm_model_optim.state_dict(),
+                "model": self.model.state_dict(),
+                "current_epoch": self.current_epoch,
+                "optimizer": self.model_optim.state_dict(),
+                "rng_state": torch.get_rng_state(),
+                "early_stopping": self.early_stopper.get_state(),
+            }
+        return run_state
+
     def _save_run_check_point(self, seed):
         # 检查目录是否存在
         if not os.path.exists(self.run_save_dir):
@@ -421,16 +456,7 @@ class NormExperiment(Settings):
             os.makedirs(self.run_save_dir)
         print(f"Saving run checkpoint to '{self.run_save_dir}'.")
 
-            
-        self.run_state = {
-            # "n_model": self.n_model.state_dict(),
-            # "norm_model_optim": self.norm_model_optim.state_dict(),
-            "model": self.model.state_dict(),
-            "current_epoch": self.current_epoch,
-            "optimizer": self.model_optim.state_dict(),
-            "rng_state": torch.get_rng_state(),
-            "early_stopping": self.early_stopper.get_state(),
-        }
+        self.run_state = self.get_run_state()
         # if not isinstance(self.n_model, No):
         #     self.run_state['n_model'] =  self.n_model.state_dict()
             # self.run_state['norm_model_optim'] =  self.norm_model_optim.state_dict()
@@ -616,68 +642,9 @@ class NormExperiment(Settings):
                     std = self.model.pred_stats[:, :, self.dataset.num_features:]
                     sliced_true = true.reshape(bs, -1, 12, self.dataset.num_features)
                     loss = self.loss_func(pred, true) + self.loss_func(mean, sliced_true.mean(2)) + self.loss_func(std, sliced_true.std(2))
-                # elif  isinstance(self.model.n_model, DishTS):
-                    # mean = self.model.pred_stats[:, :, :self.dataset.num_features]
-                    # std = self.model.pred_stats[:, :, self.dataset.num_features:]
-                    # loss2 = self.loss_func(mean, true.mean(1)) + self.loss_func(std, true.std(1))
-                    # loss2.backward()
-                elif  isinstance(self.model.nm, PeriodV2):
-                    mean = self.model.nm.preds_mean
-                    std = self.model.nm.preds_std
-                    sliced_true = true.reshape(bs, -1, 12, self.dataset.num_features)
-                    loss = self.loss_func(pred, true) + self.loss_func(mean, sliced_true.mean(2)) + self.loss_func(std, sliced_true.std(2))
-                    
-                elif isinstance(self.model.nm, PeriodFDV4) or  isinstance(self.model.nm, PeriodFDV5) or isinstance(self.model.nm, FAN) or isinstance(self.model.nm, FANRON):
-                    loss = self.loss_func(pred, true) + self.model.nm.loss(true)
-
-                elif  isinstance(self.model.nm, PeriodFDV3):
-                    mean = self.model.nm.preds_mean
-                    std = self.model.nm.preds_std
-                    sliced_true = true.reshape(bs, -1, 12, self.dataset.num_features)
-                    loss = self.loss_func(pred, true) + self.loss_func(mean, sliced_true.mean(2)) + self.loss_func(std, sliced_true.std(2)) \
-                         + self.model.nm.loss(true)
-
-
-                elif  isinstance(self.model.nm, CovidsV2):
-                    
-                    period_len = self.model.nm.period_len
-                    mean = self.model.nm.preds_mean
-                    sigma = self.model.nm.preds_sigma
-                    
-                    sliced_true = true.reshape(bs, -1, period_len, self.dataset.num_features) # (B, M', T, N)
-                    sliced_mean = torch.mean(sliced_true, dim=-2, keepdim=True) # (B, M, 1, N)
-                    input_center = sliced_true - sliced_mean # (B, M, T, N)
-                    sigma_true = torch.einsum('bmtv,bmtn->bmvn', input_center, input_center) / (period_len - 1) # (B, M, N, N)
-                    
-                    loss = self.loss_func(pred, true) + self.loss_func(mean, sliced_true.mean(2)) + self.loss_func(sigma , sigma_true)
-                elif  isinstance(self.model.nm, SNv2):
-                    mean = self.model.nm.preds_mean
-                    std = self.model.nm.preds_std
-                    loss = self.loss_func(pred, true) + self.loss_func(mean, true) + self.loss_func(std[:, -1, :], true.std(1))
-                elif  isinstance(self.model.nm, SNv4):
-                    mean = self.model.nm.preds_mean
-                    std = self.model.nm.preds_std
-                    loss = self.loss_func(pred, true) + self.loss_func(mean, true) 
-                    
-
-                elif  isinstance(self.model.nm, CovidsV3) or isinstance(self.model.nm, CovidsV4):
-                    period_len = self.model.nm.period_len
-                    N = self.dataset.num_features
-                    sliced_true = true.reshape(bs, -1, period_len, N) # (B, M', T, N)
-                    sliced_mean = torch.mean(sliced_true, dim=-2, keepdim=True) # (B, M, 1, N)
-                    input_center = sliced_true - sliced_mean # (B, M, T, N)
-
-                    sigma_true = torch.einsum('bmtv,bmtn->bmvn', input_center, input_center) / (period_len - 1) # (B, M, N, N)
-                    
-                    nm = self.model.nm
-                    mean = self.model.nm.preds_mean
-                    loss = self.loss_func(pred, true) \
-                        + ((nm.x_norm_mean)**2).mean()  + ((nm.Sigma_norm - torch.eye(N).to(self.device))**2).mean() \
-                        + ((nm.preds_mean - sliced_mean.squeeze(2))**2).mean()  + ((nm.output_Sigma - sigma_true)**2).mean()
-                        # kl_divergence_gaussian(mean, self.model.nm., , ,sigma_true.reshape(-1, ))
                 
                 else:
-                    loss = self.loss_func(pred, true)+ self.model.nm.loss(true)
+                    loss = self.loss_func(pred, true) + self.model.nm.loss(true)
 
                 
                 loss.backward()
@@ -702,9 +669,73 @@ class NormExperiment(Settings):
                 
                 times.append(end-start)
                 
+            print(f"average iter: {np.mean(times)*1000}ms")
+                
+            return train_loss
+        
+        
+    def _sep_train(self):
+        with torch.enable_grad(), tqdm(total=self.train_steps,position=0, leave=True) as progress_bar:
+            self.model.train()
+            # self.n_model.train()
+            # import pdb;pdb.set_trace()
+            times = []
+            train_loss = []
+            for i, (
+                batch_x,
+                batch_y,
+                origin_y,
+                batch_x_date_enc,
+                batch_y_date_enc,
+            ) in enumerate(self.train_loader):
+                origin_y = origin_y.to(self.device)
+                self.n_model_optim.zero_grad()
+                self.f_model_optim.zero_grad()
+                bs = batch_x.size(0)
+                batch_x = batch_x.to(self.device, dtype=torch.float32)
+                batch_y = batch_y.to(self.device, dtype=torch.float32)
+                batch_x_date_enc = batch_x_date_enc.to(self.device).float()
+                batch_y_date_enc = batch_y_date_enc.to(self.device).float()
+                start = time.time()
+
+                pred, true = self._process_batch(
+                    batch_x, batch_y, batch_x_date_enc, batch_y_date_enc
+                )
+
+                if self.invtrans_loss:
+                    pred = self.scaler.inverse_transform(pred)
+                    true = origin_y
+                
+                loss = self.loss_func(pred, true)
+                lossn = self.model.nm.loss(true)
+
+                
+                loss.backward(retain_graph=True)
+                lossn.backward(retain_graph=True)
+
+                # torch.nn.utils.clip_grad_norm_(
+                #     self.model.parameters(), self.max_grad_norm
+                # )
+                progress_bar.update(batch_x.size(0))
+                train_loss.append(loss.item())
+                progress_bar.set_postfix(
+                    loss=loss.item(),
+                    lr=self.f_model_optim.param_groups[0]["lr"],
+                    epoch=self.current_epoch,
+                    refresh=True,
+                )
+
+                self.n_model_optim.step()
+                self.f_model_optim.step()
+                
+                
+                end = time.time()
+                times.append(end-start)
+                
             print("average iter: {}ms", np.mean(times)*1000)
                 
             return train_loss
+
     def _check_run_exist(self, seed: str):
         if not os.path.exists(self.run_save_dir):
             # 如果目录不存在，则创建新目录
@@ -733,7 +764,11 @@ class NormExperiment(Settings):
         #     self.norm_model_optim.load_state_dict(check_point["norm_model_optim"])
 
         self.model.load_state_dict(check_point["model"])
-        self.model_optim.load_state_dict(check_point["optimizer"])
+        if self.is_sep_loss():
+            self.f_model_optim.load_state_dict(check_point["f_optimizer"])
+            self.n_model_optim.load_state_dict(check_point["n_optimizer"])
+        else:
+            self.model_optim.load_state_dict(check_point["optimizer"])
         self.current_epoch = check_point["current_epoch"]
 
         self.early_stopper.set_state(check_point["early_stopping"])
@@ -793,10 +828,10 @@ class NormExperiment(Settings):
                 wandb.run.summary["at_epoch"] = self.current_epoch
             # for resumable reproducibility
             self.reproducible(seed + self.current_epoch)
-            
-            train_losses =  self._train()
-            
-            
+            if self.is_sep_loss():
+                train_losses =  self._sep_train()
+            else:
+                train_losses =  self._train()
 
             self._run_print(
                 "Epoch: {} cost time: {}".format(
@@ -807,14 +842,6 @@ class NormExperiment(Settings):
                 f"Traininng loss : {np.mean(train_losses)}"
             )
             
-            
-
-
-            # self._run_print(f"Val on train....")
-            # trian_val_result = self._evaluate(self.train_loader)
-            # self._run_print(f"Val on train result: {trian_val_result}")
-            
-            # evaluate on val set
             val_result = self._val()
 
             # test
@@ -848,16 +875,7 @@ class NormExperiment(Settings):
         
 
     
-    def test_sweep(self):
-        run = wandb.init(
-            mode='offline',
-            project='sweep_test'
-        )
-        wandb.log({"log1":1})
-        run.finish()
-        
-        # raise NotImplementedError("ss")
-        return
+
 
     def count_parameters(self, print_fun):
         table = PrettyTable(["Modules", "Parameters"])
@@ -915,7 +933,10 @@ class NormExperiment(Settings):
                 wandb.run.summary["at_epoch"] = self.current_epoch
             # for resumable reproducibility
             self.reproducible(seed + self.current_epoch)
-            train_losses =  self._train()
+            if self.is_sep_loss():
+                train_losses =  self._sep_train()
+            else:
+                train_losses =  self._train()
 
             self._run_print(
                 "Epoch: {} cost time: {}".format(

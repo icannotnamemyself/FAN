@@ -24,6 +24,7 @@ from .FANRON import FANRON
 from .FANGRU import FANGRU
 from .FAN3MLP import FAN3MLP
 from .FANMixer import FANMixer
+from .FANFIXED import FANFIXED
 
 
 __all__ = [
@@ -51,6 +52,7 @@ __all__ = [
     'FANGRU',
     'FAN3MLP',
     'FANMixer',
+    'FANFIXED',
 ]
 
 # def _parse_type(str_or_type: Union[Type, str]) -> Type:
