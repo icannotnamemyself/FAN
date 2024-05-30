@@ -23,8 +23,6 @@ class Model(nn.Module):
             batch_x, self.pred_stats = self.nm(batch_x) 
         elif  isinstance(self.nm, DishTS):
             batch_x, dec_inp =self.nm(batch_x, 'n', dec_inp)  if 'former' in self.f_model_type  else  self.nm(batch_x)
-        elif  isinstance(self.nm, CovidsV1):
-            batch_x = self.nm(batch_x)
         elif  isinstance(self.nm, No):
             pass
         else:
@@ -42,8 +40,6 @@ class Model(nn.Module):
             pred = self.nm(pred, 'd', self.pred_stats)
         elif  isinstance(self.nm, DishTS):
             pred = self.nm(pred, 'd') 
-        elif  isinstance(self.nm, CovidsV1):
-            pred = self.nm(pred, 'd')
         else:
             pred = self.nm(pred, 'd')
         

@@ -2,8 +2,8 @@
 # ./scripts/run.sh "Dlinear" "No RevIN SAN DishTS" "ExchangeRate" "24"  "cuda:0" 336
 
 
-# ./scripts/run.sh "Dlinear" "No RevIN SAN DishTS" "ExchangeRate " "24"  "cuda:0" 336
-# ./scripts/run.sh "Dlinear" "FANCP" "ExchangeRate " "24"  "cuda:0" 336
+# ./scripts/run.sh "Koopa" "No RevIN SAN DishTS" "ExchangeRate " "24"  "cuda:0" 336
+# `./scripts/run.sh "Dlinear" "FANCP" "ExchangeRate " "24"  "cuda:0" 336`
 
 
 
@@ -41,7 +41,8 @@ do
             do
                 echo "Running with dataset = $dataset and pred_len = $pred_len , window = $windows"
                 # CUDA_DEVICE_ORDER=PCI_BUS_ID HTTPS_PROXY="http://192.168.5.250:7890" https_proxy="http://192.168.5.250:7890" python3 ./torch_timeseries/norm_experiments/$model.py   --dataset_type="$dataset" --norm_type="$norm" --device="$device" --batch_size=32 --horizon=1 --pred_len="$pred_len" --windows=$windows --epochs=100 config_wandb --project=Norm --name="Norm"  runs --seeds='[1,2,3,4,5]'
-                CUDA_DEVICE_ORDER=PCI_BUS_ID python3 ./torch_timeseries/norm_experiments/$model.py   --dataset_type="$dataset" --norm_type="$norm" --device="$device" --batch_size=32 --horizon=1 --pred_len="$pred_len" --windows=$windows --epochs=100   runs --seeds='[1,2,3,4,5]'
+                # CUDA_DEVICE_ORDER=PCI_BUS_ID python3 ./torch_timeseries/norm_experiments/$model.py   --dataset_type="$dataset" --norm_type="$norm" --device="$device" --batch_size=32 --horizon=1 --pred_len="$pred_len" --windows=$windows --epochs=100   runs --seeds='[1,2,3,4,5]'
+                CUDA_DEVICE_ORDER=PCI_BUS_ID python3 ./torch_timeseries/norm_experiments/$model.py   --dataset_type="$dataset" --norm_type="$norm" --device="$device" --batch_size=32 --horizon=1 --pred_len="$pred_len" --windows=$windows --epochs=100   runs --seeds='[1]'
                 # CUDA_DEVICE_ORDER=PCI_BUS_ID python3 ./torch_timeseries/norm_experiments/$model.py   --dataset_type="$dataset" --norm_type="$norm" --device="$device" --batch_size=32 --horizon=1 --pred_len="$pred_len" --windows=$windows --epochs=100 config_wandb --project=Norm --name="Norm"  runs --seeds='[1,2,3,4,5]'
             done
         done

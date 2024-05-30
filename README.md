@@ -2,7 +2,7 @@
 
 This is the offcial repository of paper "Frequency Adaptive Normalization For Non-stationary Time Series Forecasting"
 
-![HSTGNN](./fig/overview.jpg)
+![FAN](./fig/overview.jpg)
 
 
 
@@ -15,7 +15,7 @@ ETTh1, ETTh2, ETTm1, ETTm2, ExchangeRate, Weather, Electricity will be downloade
 ## 3.1 install requirements
 
 1. to run our code, **Please make sure your python version is >=3.8.**
-2. install all the requirements, we assume that you have installed torch and pyg according to your environment
+2. install all the requirements, we assume that you have installed torch according to your environment
 ```
 pip install -r ./requirements.txt
 ```

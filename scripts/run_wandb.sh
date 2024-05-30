@@ -1,5 +1,4 @@
 #!/bin/bash
-# ./scripts/run.sh "Dlinear" "No RevIN SAN DishTS" "ExchangeRate" "24"  "cuda:0" 336
 
 
 
