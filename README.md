@@ -48,3 +48,13 @@ Please change the settings in the following for what you need.
 # running all baselines~(DLinear backbone) with output length 96, 168, 336, 720 on dataset ETTm1 ETTm2 with input window 96
 ./scripts/run.sh "DLinear" "No RevIN SAN DishTS" "ETTm1 ETTm2" "96 168 336 720"  "cuda:0" 96
 ```
+
+
+# 3 use model checkpoints
+
+1. download the results folder for the checkpoints.
+2. run the corresponding command to evaluate the results, for example:
+```python
+# run FAN with K=2 on ExchangeRate L=96 H=96
+./scripts/run_fan.sh "DLinear" "FAN" "ExchangeRate " "96" "cuda:0" 96  "{freq_topk:2}"
+```
