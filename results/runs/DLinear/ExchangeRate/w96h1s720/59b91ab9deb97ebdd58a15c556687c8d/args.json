@@ -1,0 +1,27 @@
+{
+    "dataset_type": "ExchangeRate",
+    "optm_type": "Adam",
+    "model_type": "DLinear",
+    "scaler_type": "StandarScaler",
+    "loss_func_type": "mse",
+    "batch_size": 32,
+    "lr": 0.0003,
+    "l2_weight_decay": 0.0005,
+    "epochs": 100,
+    "horizon": 1,
+    "windows": 96,
+    "pred_len": 720,
+    "patience": 5,
+    "max_grad_norm": 5.0,
+    "invtrans_loss": false,
+    "norm_type": "FAN",
+    "norm_config": {
+        "freq_topk": 2
+    },
+    "data_path": "./data",
+    "device": "cuda:0",
+    "num_worker": 20,
+    "save_dir": "./results",
+    "experiment_label": "1722675590",
+    "individual": false
+}
