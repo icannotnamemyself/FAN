@@ -58,3 +58,13 @@ Please change the settings in the following for what you need.
 # run FAN with K=2 on ExchangeRate L=96 H=96
 ./scripts/run_fan.sh "DLinear" "FAN" "ExchangeRate " "96" "cuda:0" 96  "{freq_topk:2}"
 ```
+
+# 4 Z-score ablation
+run the following command to run the z-score ablation experiments:
+```python
+# evaluate with z-score reverse scale
+./scripts/run_fan_invtrans.sh "DLinear" "FAN"  "Traffic " "96"  "cuda:0" 96  "{freq_topk:30}"
+
+# run with no z-score
+./scripts/run_fan_wandb_scale.sh "DLinear" "No"  "Traffic " "96"  "cuda:0" 96  "{freq_topk:30}" "NoScaler"
+```
