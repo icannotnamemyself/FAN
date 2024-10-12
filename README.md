@@ -1,3 +1,24 @@
+# Some Notes On the Results About Scaling
+
+Here, I scaled the train/val/test data using all the dataset rather than using only train dataset.
+Indeed, it will create a label leak problem to a small extend.
+
+If you feel that you don't want this, please change the class (`ChunkSequenceTimefeatureDataLoader`) setting in function `torch_timeseries/experiments/experiment.py._init_data_loader` as:
+
+```
+scale_in_train=True
+```
+However, I have to emphasize that this will not change the conclusion of this paper, here is a result clip if you scale using only the training data:
+
+ETTh1-P96-MSE
+
+FAN: 0.37903
+
+SAN: 0.38818
+
+RevIN: 0.40132
+
+
 # 1 Frequency Adaptive Normalization For Non-stationary Time Series Forecasting
 
 This is the offcial repository of paper "Frequency Adaptive Normalization For Non-stationary Time Series Forecasting"
