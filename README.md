@@ -18,6 +18,22 @@ SAN: 0.38818
 
 RevIN: 0.40132
 
+# About Data Split
+
+We use a general split paradigm: train/val/test = 7/2/1 and use all the data entries. 
+For ETTs datasets, previous popular split is using only 2 years data and split as 6/2/2. 
+We have implemented this and provide a correspondent dataloader: ETTMLoader/ETTHLoader at dataloader.py.
+To run the code, below is an example:
+```
+bash ./scripts/FAN/ETTh1.sh
+```
+or
+```
+bash ./scripts/FAN/ETTm1.sh
+```
+
+We have already checked  the implementation from data, code, results perspective, comparing to previous implementation e.g. Informer, PatchTST, TimesNet.
+
 
 # 1 Frequency Adaptive Normalization For Non-stationary Time Series Forecasting
 

@@ -20,7 +20,7 @@ from torch_timeseries.data.scaler import *
 from torch_timeseries.datasets import *
 from torch_timeseries.datasets.dataset import TimeSeriesDataset
 from torch_timeseries.datasets.dataloader import (
-    ChunkSequenceTimefeatureDataLoader,
+    ChunkSequenceTimefeatureDataLoader, ETTHLoader, ETTMLoader
 )
 from torch.nn import MSELoss, L1Loss
 
@@ -80,6 +80,7 @@ class ResultRelatedSettings:
     invtrans_loss: bool = False
     
     norm_type : str = ''
+    split_type : str = "custom" # popular, custom
     norm_config : dict = field(default_factory= lambda : {})
     
 
@@ -87,7 +88,7 @@ class ResultRelatedSettings:
 class Settings(ResultRelatedSettings):
     data_path: str = "./data"
     device: str = "cuda:0"
-    num_worker: int = 20
+    num_worker: int = 8
     save_dir: str = "./results"
     experiment_label: str = str(int(time.time()))
 
@@ -242,7 +243,9 @@ class NormExperiment(Settings):
         ident = self.result_related_config
         ident["seed"] = seed
         # only influence the evluation result, not included here
-        # ident['invtrans_loss'] = False
+        ident['invtrans_loss'] = False
+        if self.norm_config is None:
+            del ident['norm_config']
 
         ident_md5 = hashlib.md5(
             json.dumps(ident, sort_keys=True).encode("utf-8")
@@ -253,20 +256,46 @@ class NormExperiment(Settings):
     def _init_data_loader(self):
         self.dataset : TimeSeriesDataset = self._parse_type(self.dataset_type)(root=self.data_path)
         self.scaler = self._parse_type(self.scaler_type)()
-        self.dataloader = ChunkSequenceTimefeatureDataLoader(
-            self.dataset,
-            self.scaler,
-            window=self.windows,
-            horizon=self.horizon,
-            steps=self.pred_len,
-            scale_in_train=False,
-            shuffle_train=True,
-            freq="h",
-            batch_size=self.batch_size,
-            train_ratio=0.7,
-            val_ratio=0.2, # 0.1
-            num_worker=self.num_worker,
-        )
+        if self.split_type == "popular" and self.dataset_type[0:3] == "ETT":
+            if self.dataset_type[0:4] == "ETTh":
+                self.dataloader = ETTHLoader(
+                    self.dataset,
+                    self.scaler,
+                    window=self.windows,
+                    horizon=self.horizon,
+                    steps=self.pred_len,
+                    shuffle_train=True,
+                    freq="h",
+                    batch_size=self.batch_size,
+                    num_worker=self.num_worker,
+                )
+            elif  self.dataset_type[0:4] == "ETTm":
+                self.dataloader = ETTMLoader(
+                    self.dataset,
+                    self.scaler,
+                    window=self.windows,
+                    horizon=self.horizon,
+                    steps=self.pred_len,
+                    shuffle_train=True,
+                    freq="h",
+                    batch_size=self.batch_size,
+                    num_worker=self.num_worker,
+                )
+        else:
+            self.dataloader = ChunkSequenceTimefeatureDataLoader(
+                self.dataset,
+                self.scaler,
+                window=self.windows,
+                horizon=self.horizon,
+                steps=self.pred_len,
+                scale_in_train=False,
+                shuffle_train=True,
+                freq="h",
+                batch_size=self.batch_size,
+                train_ratio=0.7,
+                val_ratio=0.2, # 0.1
+                num_worker=self.num_worker,
+            )
         self.train_loader, self.val_loader, self.test_loader = (
             self.dataloader.train_loader,
             self.dataloader.val_loader,
@@ -619,11 +648,11 @@ class NormExperiment(Settings):
                 batch_x_date_enc,
                 batch_y_date_enc,
             ) in enumerate(self.train_loader):
-                origin_y = origin_y.to(self.device)
+                origin_y = origin_y.to(self.device).float()
                 self.model_optim.zero_grad()
                 bs = batch_x.size(0)
-                batch_x = batch_x.to(self.device, dtype=torch.float32)
-                batch_y = batch_y.to(self.device, dtype=torch.float32)
+                batch_x = batch_x.to(self.device, dtype=torch.float32).float()
+                batch_y = batch_y.to(self.device, dtype=torch.float32).float()
                 batch_x_date_enc = batch_x_date_enc.to(self.device).float()
                 batch_y_date_enc = batch_y_date_enc.to(self.device).float()
                 start = time.time()
@@ -633,7 +662,7 @@ class NormExperiment(Settings):
                 )
 
                 if self.invtrans_loss:
-                    pred = self.scaler.inverse_transform(pred)
+                    pred = self.scaler.inverse_transform(pred).float()
                     true = origin_y
                 
                 # 
@@ -644,7 +673,11 @@ class NormExperiment(Settings):
                     loss = self.loss_func(pred, true) + self.loss_func(mean, sliced_true.mean(2)) + self.loss_func(std, sliced_true.std(2))
                 
                 else:
+                    # import pdb;pdb.set_trace()
                     loss = self.loss_func(pred, true) + self.model.nm.loss(true)
+                    
+                    if self.scaler_type is NoScaler:
+                        loss = 10000*self.loss_func(pred, true) + 10000*self.model.nm.loss(true)
 
                 
                 loss.backward()
